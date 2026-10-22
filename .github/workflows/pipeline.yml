@@ -15,7 +15,33 @@ env:
   PYTHON_PADRAO: '3.12'
 
 jobs:
+  build:
+    name: Build - gerar e publicar ZIP
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact-id: ${{ steps.publicar.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_PADRAO }}
+      - name: Verificar sintaxe
+        run: python -m py_compile app.py
+      - name: Empacotar arquivos versionados
+        run: >-
+          git archive --format=zip --output=pipeline-demo.zip HEAD
+          app.py tests_app.py requirements.txt .coveragerc sonar-project.properties
+      - name: Publicar artefato
+        id: publicar
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: codigo-buildado
+          path: pipeline-demo.zip
+          if-no-files-found: error
+          retention-days: 7
+
   qualidade:
+    needs: build
     name: Qualidade (${{ matrix.os }}, Python ${{ matrix.python-version }})
     strategy:
       fail-fast: false
@@ -24,8 +50,14 @@ jobs:
         python-version: ['3.11', '3.12']
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Baixar código
-        uses: actions/checkout@v6
+      - name: Baixar o artefato do build
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: artefato
+          merge-multiple: true
+      - name: Extrair o artefato
+        run: unzip -o artefato/pipeline-demo.zip -d .
 
       - name: Configurar Python e cache
         uses: actions/setup-python@v6
@@ -60,7 +92,7 @@ jobs:
 
   sonar:
     name: SonarCloud (ativação nas variáveis do repositório)
-    needs: [qualidade, seguranca]
+    needs: [build, qualidade, seguranca]
     if: >-
       vars.SONAR_ENABLED == 'true' &&
       (github.event_name != 'pull_request' ||
@@ -74,6 +106,14 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Baixar o artefato do build
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: artefato
+          merge-multiple: true
+      - name: Extrair o artefato
+        run: unzip -o artefato/pipeline-demo.zip -d .
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_PADRAO }}
@@ -98,3 +138,31 @@ jobs:
             -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
             -Dsonar.qualitygate.wait=true
+
+  deploy:
+    name: Deploy demonstrativo - aprovação manual
+    needs: [build, qualidade, seguranca, sonar]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+    steps:
+      - name: Baixar o artefato do build
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: artefato
+          merge-multiple: true
+      - name: Extrair o artefato
+        run: unzip -o artefato/pipeline-demo.zip -d production
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_PADRAO }}
+      - name: Demonstrar execução do pacote aprovado
+        run: printf '2\n+\n3\n' | python production/app.py
+      - name: Registrar entrega demonstrativa
+        run: |
+          echo '### Deploy demonstrativo aprovado' >> "$GITHUB_STEP_SUMMARY"
+          echo 'O mesmo ZIP do build foi validado e extraído no runner após a aprovação do environment.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Esta demonstração não publica a aplicação em um servidor externo.' >> "$GITHUB_STEP_SUMMARY"
