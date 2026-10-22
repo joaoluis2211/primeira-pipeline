@@ -1,3 +1,6 @@
-pytest
-pytest-cov
-flake8
+pytest==9.1.1
+pytest-cov==7.1.0
+flake8==7.4.1
+# Versão antiga exigida no exercício para demonstrar o Dependabot.
+# Após o primeiro PR de atualização, revise e aceite a atualização.
+requests==2.28.1

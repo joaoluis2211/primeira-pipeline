@@ -10,19 +10,29 @@ on:
 permissions:
   contents: read
 
+env:
+  COBERTURA_MINIMA: '90'
+  PYTHON_PADRAO: '3.12'
+
 jobs:
   qualidade:
-    runs-on: ubuntu-latest
+    name: Qualidade (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04]
+        python-version: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Baixar código do repositório
+      - name: Baixar código
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
-      - name: Configurar Python
+      - name: Configurar Python e cache
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Instalar dependências
         run: python -m pip install -r requirements.txt
@@ -30,11 +40,61 @@ jobs:
       - name: Análise estática (Flake8)
         run: python -m flake8 app.py tests_app.py
 
-      - name: Testes unitários e cobertura mínima de 90%
-        run: python -m pytest -v tests_app.py --cov=app --cov-report=term-missing --cov-fail-under=90
+      - name: Testes e cobertura mínima
+        run: >-
+          python -m pytest -v tests_app.py
+          --cov=app --cov-report=term-missing
+          --cov-fail-under=${{ env.COBERTURA_MINIMA }}
 
-      - name: Análise de segurança (Gitleaks)
-        uses: gitleaks/gitleaks-action@v3
+  seguranca:
+    name: Verificar credenciais expostas
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: 'false'
+
+  sonar:
+    name: SonarCloud (ativação nas variáveis do repositório)
+    needs: [qualidade, seguranca]
+    if: >-
+      vars.SONAR_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_PADRAO }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Validar configuração do SonarCloud
+        run: |
+          test -n "$SONAR_TOKEN" || { echo 'Cadastre o secret SONAR_TOKEN.'; exit 1; }
+          test -n "$SONAR_PROJECT_KEY" || { echo 'Cadastre a variável SONAR_PROJECT_KEY.'; exit 1; }
+          test -n "$SONAR_ORGANIZATION" || { echo 'Cadastre a variável SONAR_ORGANIZATION.'; exit 1; }
+      - name: Instalar dependências
+        run: python -m pip install -r requirements.txt
+      - name: Gerar relatório de cobertura para o SonarCloud
+        run: >-
+          python -m pytest tests_app.py --cov=app
+          --cov-report=xml:coverage.xml
+          --cov-fail-under=${{ env.COBERTURA_MINIMA }}
+      - name: Analisar no SonarCloud e aguardar Quality Gate
+        uses: SonarSource/sonarqube-scan-action@v8.3.0
+        with:
+          args: >-
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.qualitygate.wait=true
