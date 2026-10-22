@@ -1,4 +1,6 @@
-def calcular(primeiro_numero: float, segundo_numero: float, operacao: str) -> float:
+def calcular(
+    primeiro_numero: float, segundo_numero: float, operacao: str
+) -> float:
     """Executa uma operação aritmética entre dois números."""
     if operacao == "+":
         return primeiro_numero + segundo_numero
