@@ -22,7 +22,7 @@ jobs:
       artifact-id: ${{ steps.publicar.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_PADRAO }}
       - name: Verificar sintaxe
@@ -60,7 +60,7 @@ jobs:
         run: unzip -o artefato/pipeline-demo.zip -d .
 
       - name: Configurar Python e cache
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -114,7 +114,7 @@ jobs:
           merge-multiple: true
       - name: Extrair o artefato
         run: unzip -o artefato/pipeline-demo.zip -d .
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_PADRAO }}
           cache: pip
@@ -156,7 +156,7 @@ jobs:
       - name: Extrair o artefato
         run: unzip -o artefato/pipeline-demo.zip -d production
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_PADRAO }}
       - name: Demonstrar execução do pacote aprovado
