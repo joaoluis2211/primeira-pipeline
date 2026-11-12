@@ -132,7 +132,7 @@ jobs:
           --cov-report=xml:coverage.xml
           --cov-fail-under=${{ env.COBERTURA_MINIMA }}
       - name: Analisar no SonarCloud e aguardar Quality Gate
-        uses: SonarSource/sonarqube-scan-action@v8.3.0
+        uses: SonarSource/sonarqube-scan-action@v8.4.1
         with:
           args: >-
             -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
